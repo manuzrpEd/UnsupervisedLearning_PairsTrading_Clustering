@@ -58,7 +58,7 @@ def plot_log_rets(rets):
 
     return
 
-def get_log_rets(re_overs_df, re_unders_df):
+def get_log_rets(re_overs_df, re_unders_df, overs_stock_df, unders_stock_df):
     """
     Calculates the logarithmic returns of over-performing and under-performing trades, along with their aggregate totals and trade counts.
     Parameters:
@@ -75,8 +75,8 @@ def get_log_rets(re_overs_df, re_unders_df):
     log_rets = pd.concat([ o, u, o + u], axis=1)
     log_rets.columns = ['Overs', 'Unders', 'Totals']
 
-    overs_count = overs_stock_df.groupby("DATE").size().resample('ME').sum()
-    unders_count = unders_stock_df.groupby("DATE").size().resample('ME').sum()
+    overs_count = overs_stock_df.groupby("DATE").size().resample('M').sum()
+    unders_count = unders_stock_df.groupby("DATE").size().resample('M').sum()
     log_rets['Trade Count'] = overs_count.values + unders_count.values
 
     return log_rets
@@ -146,12 +146,12 @@ def get_pnl(trade_opportunities_df, MOM_FEATURES, pca_result_df, OVER_RETS, UNDE
     overs_df = overs_df.set_index("DATE", drop=False).fillna(0)
 
     # Resampling in case of multiple trades in one month
-    re_unders_df = unders_df.resample('ME', on='DATE')[UNDER_RETS].mean()
-    re_overs_df = overs_df.resample('ME', on='DATE')[OVER_RETS].mean()
+    re_unders_df = unders_df.resample('M', on='DATE')[UNDER_RETS].mean()
+    re_overs_df = overs_df.resample('M', on='DATE')[OVER_RETS].mean()
 
     return overs_stock_df, unders_stock_df, overs_df, unders_df, re_unders_df, re_overs_df
 
-def statarb_signals(group, MOM_FEATURES, RETS_1, std_dev_factor=1.5):
+def statarb_signals(group, MOM_FEATURES, RETS_1, RETS,OVER_RETS,UNDER_RETS, std_dev_factor=1.5):
     """
     Finds signals for a given cluster of stocks by identifying overvalued ("overs") and undervalued ("unders") stocks
     in the top and bottom deciles, where the momentum difference exceeds a specified standard deviation factor, using pd.qcut.
@@ -199,18 +199,19 @@ def statarb_signals(group, MOM_FEATURES, RETS_1, std_dev_factor=1.5):
     }]
 
 
-def process_trade_opportunities(df, cluster_label, filepath):
+def process_trade_opportunities(df, cluster_label, filepath, MOM_FEATURES, RETS_1, RETS
+                                ,OVER_RETS,UNDER_RETS):
     df['cluster'] = df[cluster_label]
 
     tqdm.pandas(desc=f"StatArb opportunities with {cluster_label}")
-    trade_opportunities = df.groupby(['cluster', 'DATE']).progress_apply(statarb_signals)
+    trade_opportunities = df.groupby(['cluster', 'DATE']).progress_apply(
+        lambda group: statarb_signals(group, MOM_FEATURES, RETS_1, RETS,OVER_RETS,UNDER_RETS))
     trade_opportunities = [item for sublist in trade_opportunities for item in sublist]
     if len(trade_opportunities) == 0:
         return pd.DataFrame()
 
     trade_opportunities_df = pd.DataFrame(trade_opportunities)
-    if not IS_KAGGLE:
-        trade_opportunities_df.to_pickle(filepath)
+    trade_opportunities_df.to_pickle(filepath)
     return trade_opportunities_df
 
 
